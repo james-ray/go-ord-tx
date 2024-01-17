@@ -11,6 +11,7 @@ import (
 
 type MempoolClient struct {
 	baseURL             string
+	rpcURL              string
 	broadcastTxEndPoint string
 }
 
@@ -28,7 +29,8 @@ func NewClient(netParams *chaincfg.Params, broadcastTxEndPoint string) *MempoolC
 		log.Fatal("mempool don't support other netParams")
 	}
 	return &MempoolClient{
-		baseURL: baseURL,
+		baseURL:             baseURL,
+		broadcastTxEndPoint: broadcastTxEndPoint,
 	}
 }
 
@@ -42,16 +44,21 @@ func NewDOGEClient() *MempoolClient {
 }
 
 func NewHcClient() *MempoolClient {
-	baseURL := ""
-	baseURL = "http://8.210.235.169"
+	baseURL := "http://8.210.235.169"
+	rpcURL := "https://8.210.235.169:14009"
 	return &MempoolClient{
 		baseURL:             baseURL,
-		broadcastTxEndPoint: "sendTx",
+		rpcURL:              rpcURL,
+		broadcastTxEndPoint: "sendrawtransaction",
 	}
 }
 
 func (c *MempoolClient) request(method, subPath string, requestBody io.Reader) ([]byte, error) {
 	return btcapi.Request(method, c.baseURL, subPath, requestBody)
+}
+
+func (c *MempoolClient) requestWithAuth(method, subPath string, requestBody string) ([]byte, error) {
+	return btcapi.RequestWithAuth(method, c.rpcURL, subPath, requestBody)
 }
 
 var _ btcapi.BTCAPIClient = (*MempoolClient)(nil)

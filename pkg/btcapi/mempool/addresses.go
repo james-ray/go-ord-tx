@@ -43,15 +43,15 @@ type DOGEUTXO struct {
 type DOGEUTXOs []DOGEUTXO
 
 type HCUTXO struct {
-	Address       string `json:"address"`
-	Txid          string `json:"txid"`
-	Vout          int    `json:"vout"`
-	Ts            int    `json:"ts"`
-	ScriptPubKey  string `json:"scriptPubKey"`
-	Height        int    `json:"height"`
-	Amount        int    `json:"amount"`
-	Satoshis      int    `json:"satoshis"`
-	Confirmations int    `json:"confirmations"`
+	Address       string  `json:"address"`
+	Txid          string  `json:"txid"`
+	Vout          int     `json:"vout"`
+	Ts            int     `json:"ts"`
+	ScriptPubKey  string  `json:"scriptPubKey"`
+	Height        int     `json:"height"`
+	Amount        float32 `json:"amount"`
+	Satoshis      int     `json:"satoshis"`
+	Confirmations int     `json:"confirmations"`
 }
 
 // HCUTXOs is a slice of UTXO

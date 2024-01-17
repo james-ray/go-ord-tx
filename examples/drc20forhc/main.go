@@ -26,10 +26,10 @@ var b58Alphabet = []byte("123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuv
 var HcParams = &hcchaincfg.MainNetParams
 
 const (
-	DogeMinVal      = 100000    //doge utxo 最小val
-	DogeDeployFee   = 100000000 //部署 1个Doge 币
-	DogeMintFee     = 10000000  //铸币 0.1 个 Doge 币
-	DogeTransferFee = 100000    //转账 0.001个 Doge 币
+	DogeMinVal      = 100000  //doge utxo 最小val
+	DogeDeployFee   = 1000000 //部署 0.01个Doge 币
+	DogeMintFee     = 1000000 //铸币 0.01 个 Doge 币
+	DogeTransferFee = 100000  //转账 0.001个 Doge 币
 )
 
 type OutPutItem struct {
@@ -253,7 +253,7 @@ func (c *drc20) SignRawTransaction(signIn *SignInput) (*SignResult, error) {
 	var redeemScript []byte
 	var transferValue int64
 	var platformValue int64
-	if signIn.Type == "drc20" {
+	if signIn.Type == "hrc20" {
 		//err := json.Unmarshal(signIn.Params, &param)
 		//if err != nil {
 		//	return nil, err
@@ -274,15 +274,15 @@ func (c *drc20) SignRawTransaction(signIn *SignInput) (*SignResult, error) {
 			platformValue = DogeDeployFee
 			//添加第一个out 代币地址 最小额度
 			transferValue = platformValue + DogeMinVal
-			jsonData = fmt.Sprintf(`{"p":"drc-20","op":"%s","tick":"%s","max":"%s","lim":"%s"}`, param.Op, param.Tick, param.Max, param.Lim)
+			jsonData = fmt.Sprintf(`{"p":"hrc-20","op":"%s","tick":"%s","max":"%s","lim":"%s"}`, param.Op, param.Tick, param.Max, param.Lim)
 		case "mint": //铸币 0.5 个 Doge 币
 			platformValue = DogeMintFee
 			//添加第一个out 代币地址 最小额度
 			transferValue = platformValue + DogeMinVal
-			jsonData = fmt.Sprintf(`{"p":"drc-20","op":"%s","tick":"%s","amt":"%s"}`, param.Op, param.Tick, param.Amt)
+			jsonData = fmt.Sprintf(`{"p":"hrc-20","op":"%s","tick":"%s","amt":"%s"}`, param.Op, param.Tick, param.Amt)
 		case "transfer": //转账 0.001个 Doge 币
 			transferValue = DogeTransferFee
-			jsonData = fmt.Sprintf(`{"p":"drc-20","op":"%s","tick":"%s","amt":"%s"}`, param.Op, param.Tick, param.Amt)
+			jsonData = fmt.Sprintf(`{"p":"hrc-20","op":"%s","tick":"%s","amt":"%s"}`, param.Op, param.Tick, param.Amt)
 
 		default:
 			return nil, errors.New("not support operation")
@@ -293,7 +293,7 @@ func (c *drc20) SignRawTransaction(signIn *SignInput) (*SignResult, error) {
 		builder.AddOp(txscript.OP_1).AddData(pub.SerializeCompressed()).AddOp(txscript.OP_1)
 		builder.AddOp(txscript.OP_CHECKMULTISIG)
 		builder.AddData([]byte("ord")).AddData([]byte("text/plain;charset=utf-8")).AddData([]byte(jsonData))
-		builder.AddOp(txscript.OP_DROP).AddOp(txscript.OP_DROP).AddOp(txscript.OP_DROP).AddOp(txscript.OP_DROP)
+		builder.AddOp(txscript.OP_DROP).AddOp(txscript.OP_DROP).AddOp(txscript.OP_DROP) //.AddOp(txscript.OP_DROP)
 		redeemScript, err = builder.Script()
 		if err != nil {
 			return nil, err
@@ -460,7 +460,7 @@ func (c *drc20) SignRawTransaction(signIn *SignInput) (*SignResult, error) {
 		return nil, err
 	}
 	signature := txscript.NewScriptBuilder()
-	signature.AddOp(txscript.OP_10).AddOp(txscript.OP_FALSE).AddData(sig)
+	signature.AddData(sig) //.AddOp(txscript.OP_10).AddOp(txscript.OP_FALSE)
 	signature.AddData(redeemScript)
 	signatureScript, err := signature.Script()
 	if err != nil {
@@ -592,110 +592,118 @@ func main() {
 		log.Fatal(err)
 	}
 	log.Println("pay2pubkeyHashAddress, " + pay2pubkeyHashAddress.String())
-	unspentList, err := btcApiClient.ListUnspentForHc(pay2pubkeyHashAddress)
 
-	if err != nil {
-		log.Fatalf("list unspent err %v", err)
-	}
-	for i := range unspentList {
-		for j := i + 1; j < len(unspentList); j++ {
-			if unspentList[i].Output.Value < unspentList[j].Output.Value { //brc20铸造，优先选大的，即不含铭文的utxo
-				temp := unspentList[i]
-				unspentList[i] = unspentList[j]
-				unspentList[j] = temp
+	for i := 0; i < 30; i++ {
+		unspentList, err := btcApiClient.ListUnspentForHc(pay2pubkeyHashAddress)
+
+		if err != nil {
+			log.Fatalf("list unspent err %v", err)
+		}
+		if len(unspentList) == 0 {
+			panic("no unspent utxo found!")
+		}
+
+		for i := range unspentList {
+			for j := i + 1; j < len(unspentList); j++ {
+				if unspentList[i].Output.Value < unspentList[j].Output.Value { //brc20铸造，优先选大的，即不含铭文的utxo
+					temp := unspentList[i]
+					unspentList[i] = unspentList[j]
+					unspentList[j] = temp
+				}
 			}
 		}
-	}
-	totalAmount := int64(0)
-	outputs := make([]OutPutItem, 0)
-	for i := range unspentList {
-		item1 := OutPutItem{
-			TxHash:   unspentList[i].Outpoint.Hash.String(),
-			Value:    unspentList[i].Output.Value,
-			Vout:     unspentList[i].Outpoint.Index,
-			Pkscript: hex.EncodeToString(unspentList[i].Output.PkScript),
+		totalAmount := int64(0)
+		outputs := make([]OutPutItem, 0)
+		for i := range unspentList {
+			item1 := OutPutItem{
+				TxHash:   unspentList[i].Outpoint.Hash.String(),
+				Value:    unspentList[i].Output.Value,
+				Vout:     unspentList[i].Outpoint.Index,
+				Pkscript: hex.EncodeToString(unspentList[i].Output.PkScript),
+			}
+			outputs = append(outputs, item1)
+			totalAmount += unspentList[i].Output.Value
 		}
-		outputs = append(outputs, item1)
-		totalAmount += unspentList[i].Output.Value
+
+		param := TaprootParam{
+			Amt:           "100",
+			Tick:          "HRC1",
+			Op:            "transfer",
+			CommitFeeRate: 18,
+			FeeRate:       19,
+		}
+
+		// fmt.Println("ltc outputs: ", outputs)
+
+		jsonInputs, err := json.Marshal(outputs)
+		if err != nil {
+			//log.Fatal("Cannot encode to JSON ", err)
+			fmt.Println("outputs err: ", err.Error())
+
+		}
+		// fmt.Println("ltc outputs: ", jsonInputs)
+
+		marshal, err := json.Marshal(param)
+		if err != nil {
+			fmt.Println(err)
+		}
+		//[{"p":"drc-20","op":"transfer","tick":"DRC2","amt":"900","address":"D92dNTMsSWJRBoUPjv2n8LMozrEFZ1NNRJ"}]
+		packs := make([]AddressUnit, 1)
+		packs[0] = AddressUnit{
+			Address: "HsMpSkPvW39iGhUgayHu3v7p8SWoVAfyMFR", // pay2pubkeyHashAddress.String(),
+			TaprootParam: TaprootParam{
+				P:    "hrc-20",
+				Amt:  "50000000", // "100000000",
+				Tick: "HRC1",
+				Op:   "transfer",
+				Max:  "10000000000000",
+				Lim:  "100000000",
+				Dec:  "8",
+			},
+		}
+		marshall2, err := json.Marshal(packs)
+		if err != nil {
+			fmt.Println(err)
+		}
+		signInput := &SignInput{
+			Coin:       "hrc20",
+			Symbol:     "hrc20",
+			PrivateKey: utxoPrivateKeyHex,
+			SrcAddr:    pay2pubkeyHashAddress.String(),
+			DestAddr:   pay2pubkeyHashAddress.String(), //does not take effect
+			Fee:        20000000,
+			//SecondFee:  20000000,
+			Amount:     totalAmount,
+			Change:     0,
+			Inputs:     jsonInputs,
+			Type:       "hrc20",
+			Params:     marshal,
+			OutPutItem: marshall2,
+		}
+		drc20v := drc20{
+			name:   "p1p1",
+			symbol: "p1p1",
+			key:    nil,
+		}
+		tranferResult, err := drc20v.SignRawTransaction(signInput) //fmt.Println(tranferResult.RawTX)
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("rawTx--->", tranferResult.RawTX)
+
+		txHash, err := btcApiClient.BroadcastTxForHc(tranferResult.Txs[0])
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("txHash1 --->", txHash)
+
+		txHash, err = btcApiClient.BroadcastTxForHc(tranferResult.Txs[1])
+		if err != nil {
+			panic(err)
+		}
+		fmt.Println("txHash2 --->", txHash)
 	}
 
-	param := TaprootParam{
-		Amt:           "100",
-		Tick:          "DRC2",
-		Op:            "deploy",
-		CommitFeeRate: 18,
-		FeeRate:       19,
-	}
-
-	// fmt.Println("ltc outputs: ", outputs)
-
-	jsonInputs, err := json.Marshal(outputs)
-	if err != nil {
-		//log.Fatal("Cannot encode to JSON ", err)
-		fmt.Println("outputs err: ", err.Error())
-
-	}
-	// fmt.Println("ltc outputs: ", jsonInputs)
-
-	marshal, err := json.Marshal(param)
-	if err != nil {
-		fmt.Println(err)
-	}
-	//[{"p":"drc-20","op":"transfer","tick":"DRC2","amt":"900","address":"D92dNTMsSWJRBoUPjv2n8LMozrEFZ1NNRJ"}]
-	packs := make([]AddressUnit, 1)
-	packs[0] = AddressUnit{
-		Address: pay2pubkeyHashAddress.String(),
-		TaprootParam: TaprootParam{
-			P:    "drc-20",
-			Amt:  "100",
-			Tick: "DRC1",
-			Op:   "deploy",
-			Max:  "10000000000000",
-			Lim:  "100000000",
-			Dec:  "8",
-		},
-	}
-	marshall2, err := json.Marshal(packs)
-	if err != nil {
-		fmt.Println(err)
-	}
-	signInput := &SignInput{
-		Coin:       "drc20",
-		Symbol:     "drc20",
-		PrivateKey: utxoPrivateKeyHex,
-		SrcAddr:    pay2pubkeyHashAddress.String(),
-		DestAddr:   pay2pubkeyHashAddress.String(),
-		Fee:        20000000,
-		//SecondFee:  20000000,
-		Amount:     totalAmount,
-		Change:     0,
-		Inputs:     jsonInputs,
-		Type:       "drc20",
-		Params:     marshal,
-		OutPutItem: marshall2,
-	}
-	drc20v := drc20{
-		name:   "p1p1",
-		symbol: "p1p1",
-		key:    nil,
-	}
-	tranferResult, err := drc20v.SignRawTransaction(signInput) //fmt.Println(tranferResult.RawTX)
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("rawTx--->", tranferResult.RawTX)
-
-	/*txHash, err := btcApiClient.BroadcastTx(tranferResult.Txs[0])
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("txHash1 --->", txHash)
-
-	txHash, err = btcApiClient.BroadcastTx(tranferResult.Txs[1])
-	if err != nil {
-		panic(err)
-	}
-	fmt.Println("txHash2 --->", txHash)*/
 	//https://www.oklink.com/doge/tx/8d15218e949db0077a327ba2d9abb061dc1cdea04be3548e0860c6bdf3b61f23
 }
 
